@@ -1,0 +1,117 @@
+from django.shortcuts import render
+from django.conf import settings
+from  django.http import HttpResponse,JsonResponse
+from booktest.models import PicTest,AreaInfo
+
+# Create your views here.
+
+EXCLUDE_IPS = ['192.168.1.100']
+def blockd_ips(view_func):
+    def wrapper(request, *view_args, **view_kwargs):
+        # 获取浏览器端的Ip地址
+        user_ip = request.META['REMOTE_ADDR']
+        print(user_ip)
+        if user_ip in EXCLUDE_IPS:
+            return HttpResponse('<h1>Forbidden</h1>')
+        else:
+            return view_func(request, *view_args, **view_kwargs)
+    return wrapper
+
+# @blockd_ips
+def static_test(request):
+    '''静态文件'''
+
+    return render(request, 'booktest/static.html')
+
+
+# @blockd_ips
+def index(request):
+    '''首页'''
+    # 获取浏览器端的Ip地址
+    print('-----index-------')
+    return render(request, 'booktest/index.html')
+
+# /show_upload
+def show_upload(request):
+    '''显示上传图片页面'''
+    return render(request, 'booktest/upload_pic.html')
+
+def upload_handle(request):
+    '''上传图片处理'''
+    # 1.获取上传的文件的处理对象
+    pic = request.FILES['pic']
+    # print(type(pic))
+    # print(pic.name)
+    # pic.chunks()
+    # 2.创建一个文件
+    save_path = '%s/booktest/%s'%(settings.MEDIA_ROOT, pic.name)
+    with open(save_path, 'wb') as f:
+        # 3.获取上传文件的内容并写到创建的文件中
+        for content in pic.chunks():
+            f.write(content)
+
+    # 4.在数据库中保存上传记录
+    PicTest.objects.create(goods_pic='booktest/%s' % pic.name)
+
+    # 5.返回
+    return HttpResponse('保存成功')
+
+
+def pic_show(request):
+    pic = PicTest.objects.get(id = 1)
+    print(pic.goods_pic)
+    return render(request, 'booktest/pic_show.html', {'pic': pic})
+
+
+# /show_area页码
+from django.core.paginator import Paginator
+def show_area(request, pindex):
+    '''分页'''
+    # 1.查询出所有省级地区的信息
+    areas = AreaInfo.objects.filter(aParent__isnull=True)
+    # 2.分页，每页显示10条
+    paginator = Paginator(areas, 10)
+
+    # 3.获取第pindex页的内容
+    # page是Page类的实例对象
+    if pindex =='':
+        # 默认取第一页的内容
+        pindex = 1
+    else:
+        pindex = int(pindex)
+    page = paginator.page(pindex)
+    # 2.使用模板
+    return render(request, 'booktest/show_area.html', {'page': page})
+
+
+
+def areas(request):
+    '''显示省市县选择安全'''
+    return render(request, 'booktest/areas.html')
+
+
+def prov(request):
+    '''获取所有省级地区的信息'''
+    # 1.查询出所有省级地区的信息
+    areas = AreaInfo.objects.filter(aParent__isnull=True)
+    # 2.遍历areas并拼接出json数据： atitle id
+    areas_list = []
+    for area in areas:
+        areas_list.append((area.id, area.atitle))
+
+    return JsonResponse({'data': areas_list})
+
+
+def city(request, pid):
+    '''获取Pid的下级信息'''
+    # 1.获取city信息
+    # area = AreaInfo.objects.get(id=pid)
+    # areas = area.areainfo_set.all()
+    areas = AreaInfo.objects.filter(aParent_id = pid)
+    # 2.遍历areas并拼接出json数据： atitle id
+    areas_list = []
+    for area in areas:
+        areas_list.append((area.id, area.atitle))
+
+    return JsonResponse({'data': areas_list})
+
